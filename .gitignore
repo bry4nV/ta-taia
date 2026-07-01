@@ -1,0 +1,26 @@
+# Carpetas que no quieres subir
+paper/
+
+# Script monolítico legado (reemplazado por run_experiment.py)
+src.py
+
+# Caché de Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Entornos virtuales
+venv/
+.venv/
+.env/
+
+# Artefactos de entrenamiento
+logs/
+resultados/
+resultados_modular/
+*.pt
+*.db
+
+# Windows
+Thumbs.db
+.DS_Store

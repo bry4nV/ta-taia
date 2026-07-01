@@ -1,0 +1,2 @@
+dataset/PEMS08/*.pkl filter=lfs diff=lfs merge=lfs -text
+dataset/sensor_graph/adj_mx_08.pkl filter=lfs diff=lfs merge=lfs -text

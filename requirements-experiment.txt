@@ -1,0 +1,6 @@
+# Instalar PyTorch por separado con el build CUDA apropiado para el servidor.
+numpy>=1.24
+scipy>=1.10
+pandas>=2.0
+matplotlib>=3.7
+optuna>=3.5
