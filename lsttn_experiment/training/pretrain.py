@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 from ..config import ExperimentConfig, TransformerCandidate
 from ..data import load_splits
 from ..models import MaskedSubseriesTransformer
+from ..plotting import plot_training_history
 from .common import save_json, set_seed
 
 
@@ -22,7 +23,7 @@ def _mean_reconstruction_loss(model, loader, device, optimizer=None, scaler=None
         if training:
             optimizer.zero_grad(set_to_none=True)
         with torch.set_grad_enabled(training):
-            with torch.cuda.amp.autocast(enabled=device.type == "cuda"):
+            with torch.amp.autocast(device_type=device.type, enabled=device.type == "cuda"):
                 reconstruction, labels = model(windows, mode="pretrain")
                 loss = criterion(reconstruction, labels)
             if training:
@@ -59,7 +60,7 @@ def pretrain_candidate(cfg: ExperimentConfig, candidate: TransformerCandidate, d
         dropout=cfg.dropout,
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.pretrain_lr, weight_decay=0.0)
-    scaler = torch.cuda.amp.GradScaler(enabled=device.type == "cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
 
     run_dir = cfg.output_dir / "pretraining" / candidate.name
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -101,6 +102,12 @@ def pretrain_candidate(cfg: ExperimentConfig, candidate: TransformerCandidate, d
         "history": history,
     }
     save_json(summary, run_dir / "metrics.json")
+    plot_training_history(
+        history,
+        run_dir / "learning_curve.png",
+        f"Preentrenamiento {candidate.name}",
+        ylabel="MAE de reconstrucción normalizado",
+    )
     return summary
 
 

@@ -6,6 +6,11 @@ import json
 from pathlib import Path
 
 from lsttn_experiment.config import ExperimentConfig
+from lsttn_experiment.plotting import (
+    plot_candidate_comparison,
+    plot_optuna_study,
+    plot_training_history,
+)
 from lsttn_experiment.training.common import resolve_device, save_json
 from lsttn_experiment.training.forecast import train_forecasting
 from lsttn_experiment.training.pretrain import pretrain_candidate
@@ -43,6 +48,7 @@ def parse_args():
 
 def compare_candidates(cfg):
     results = []
+    plot_rows = []
     for candidate in cfg.candidates:
         path = cfg.output_dir / "pretraining" / candidate.name / "metrics.json"
         if path.exists():
@@ -52,8 +58,26 @@ def compare_candidates(cfg):
             probe_loss = None
             if probe_path.exists():
                 with probe_path.open(encoding="utf-8") as file:
-                    probe_loss = json.load(file)["best_valid_loss_normalized"]
+                    probe_metrics = json.load(file)
+                probe_loss = probe_metrics["best_valid_loss_normalized"]
+                plot_training_history(
+                    probe_metrics.get("history", []),
+                    probe_path.parent / "learning_curve.png",
+                    f"Probe {candidate.name}",
+                    ylabel="MAE normalizado",
+                )
             results.append((candidate.name, metrics["best_valid_loss"], probe_loss, metrics["seconds"]))
+            plot_training_history(
+                metrics.get("history", []),
+                path.parent / "learning_curve.png",
+                f"Preentrenamiento {candidate.name}",
+                ylabel="MAE de reconstrucción normalizado",
+            )
+            plot_rows.append({
+                "name": candidate.name,
+                "reconstruction": metrics["best_valid_loss"],
+                "probe": probe_loss,
+            })
     if not results:
         raise FileNotFoundError("No hay candidatos preentrenados para comparar")
     for name, loss, probe_loss, seconds in sorted(results, key=lambda row: row[1]):
@@ -67,6 +91,8 @@ def compare_candidates(cfg):
         print(f"Ganador por forecasting de validación: {min(completed_probes, key=lambda row: row[2])[0]}")
     else:
         print(f"Ganador provisional por reconstrucción: {min(results, key=lambda row: row[1])[0]}")
+    plot_candidate_comparison(plot_rows, cfg.output_dir / "candidate_comparison.png")
+    print(f"Gráficas guardadas en: {cfg.output_dir}")
 
 
 def main():
@@ -108,6 +134,8 @@ def main():
             {"best_validation_loss": study.best_value, "parameters": parameters},
             cfg.output_dir / "optuna_best.json",
         )
+        plot_optuna_study(study, cfg.output_dir / "optuna_plots")
+        study.trials_dataframe().to_csv(cfg.output_dir / "optuna_trials.csv", index=False)
         print("Mejor valor:", study.best_value)
         print("Parámetros:", parameters)
     elif args.command == "train":

@@ -10,6 +10,7 @@ from ..config import ExperimentConfig
 from ..data import MinMaxScaler, load_adjacency, load_splits
 from ..metrics import masked_mae_loss, metrics_by_horizon
 from ..models import LSTTNVariant
+from ..plotting import plot_horizon_metrics, plot_prediction_example, plot_training_history
 from .common import save_json, set_seed
 from .pretrain import load_pretrained_transformer
 
@@ -45,7 +46,7 @@ def _forecast_loss(model, loader, device, null_value, optimizer=None, scaler=Non
         if training:
             optimizer.zero_grad(set_to_none=True)
         with torch.set_grad_enabled(training):
-            with torch.cuda.amp.autocast(enabled=device.type == "cuda"):
+            with torch.amp.autocast(device_type=device.type, enabled=device.type == "cuda"):
                 prediction = model(x_short, x_long, x_day, x_week).transpose(1, 2)
                 loss = masked_mae_loss(prediction, target, null_value)
             if training:
@@ -92,7 +93,7 @@ def train_forecasting(
         weight_decay=parameters.get("weight_decay", 0.0),
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=4, factor=0.5)
-    amp_scaler = torch.cuda.amp.GradScaler(enabled=device.type == "cuda")
+    amp_scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     max_epochs = max_epochs or cfg.forecast_epochs
     best_loss = float("inf")
     best_state = None
@@ -126,7 +127,10 @@ def train_forecasting(
     run_dir = cfg.output_dir / "forecasting" / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
     # Optuna y las pruebas cortas nunca consultan test.
-    test_metrics = evaluate_model(model, loaders["test"], scaler, device) if evaluate_test else None
+    test_metrics = (
+        evaluate_model(model, loaders["test"], scaler, device, artifacts_dir=run_dir)
+        if evaluate_test else None
+    )
     if trial is None:
         torch.save({"model_state": best_state, "parameters": parameters}, run_dir / "best.pt")
     summary = {
@@ -137,11 +141,17 @@ def train_forecasting(
         "history": history,
     }
     save_json(summary, run_dir / "metrics.json")
+    plot_training_history(
+        history,
+        run_dir / "learning_curve.png",
+        f"Forecasting {run_name}",
+        ylabel="MAE normalizado",
+    )
     return summary
 
 
 @torch.no_grad()
-def evaluate_model(model, loader, scaler, device):
+def evaluate_model(model, loader, scaler, device, artifacts_dir=None):
     model.eval()
     predictions, targets = [], []
     for x_short, x_long, x_day, x_week, target in loader:
@@ -153,4 +163,14 @@ def evaluate_model(model, loader, scaler, device):
         targets.append(target.numpy())
     prediction = scaler.inverse(np.concatenate(predictions))
     target = scaler.inverse(np.concatenate(targets))
-    return metrics_by_horizon(target, prediction)
+    metrics = metrics_by_horizon(target, prediction)
+    if artifacts_dir is not None:
+        artifacts_dir = Path(artifacts_dir)
+        np.savez_compressed(
+            artifacts_dir / "test_predictions.npz",
+            predictions=prediction.astype(np.float32),
+            targets=target.astype(np.float32),
+        )
+        plot_horizon_metrics(metrics, artifacts_dir / "test_metrics_by_horizon.png")
+        plot_prediction_example(target, prediction, artifacts_dir / "prediction_example.png")
+    return metrics

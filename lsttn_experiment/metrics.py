@@ -22,8 +22,16 @@ def regression_metrics(target, prediction, null_value: float = 0.0):
 
 
 def metrics_by_horizon(target, prediction):
-    horizons = {"15min": 2, "30min": 5, "60min": 11}
-    result = {"global": regression_metrics(target, prediction)}
-    for name, index in horizons.items():
-        result[name] = regression_metrics(target[:, index], prediction[:, index])
+    by_horizon = {
+        f"{(index + 1) * 5}min": regression_metrics(target[:, index], prediction[:, index])
+        for index in range(target.shape[1])
+    }
+    result = {
+        "global": regression_metrics(target, prediction),
+        "by_horizon": by_horizon,
+    }
+    # Alias directos para facilitar la comparación con la tabla del paper.
+    for name in ("15min", "30min", "60min"):
+        if name in by_horizon:
+            result[name] = by_horizon[name]
     return result

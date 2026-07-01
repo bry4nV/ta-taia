@@ -111,3 +111,22 @@ CUDA_VISIBLE_DEVICES=0 python run_experiment.py train \
 | 60 min | 14.54 | 23.47 | 9.77 % |
 
 El paper no publica un promedio global de los doce horizontes en esa tabla. Ese promedio se usa únicamente para comparar ejecuciones propias.
+
+## Resultados y gráficas
+
+Los artefactos se guardan dentro de `resultados_modular/`:
+
+- `pretraining/<candidato>/learning_curve.png`: entrenamiento y validación del MST.
+- `candidate_comparison.png`: comparación de reconstrucción y probes.
+- `forecasting/probe_<candidato>/learning_curve.png`: curvas de selección del candidato.
+- `optuna_trials.csv`: detalle reproducible de todos los trials.
+- `optuna_plots/optuna_history.png`: evolución de la búsqueda.
+- `optuna_plots/optuna_importance.png`: importancia de hiperparámetros cuando hay trials suficientes.
+- `forecasting/<run>/learning_curve.png`: curva del entrenamiento final.
+- `forecasting/<run>/test_metrics_by_horizon.png`: MAE, RMSE y MAPE de 5 a 60 minutos.
+- `forecasting/<run>/prediction_example.png`: ejemplo real frente a pronosticado.
+- `forecasting/<run>/test_predictions.npz`: predicciones y objetivos completos.
+
+Los `metrics.json` son la fuente numérica principal. El comando `compare` reconstruye las curvas
+de los preentrenamientos y probes desde esos archivos, incluso si fueron generados antes de
+incorporar las gráficas. Por tanto, no es necesario repetir un entrenamiento ya terminado.
