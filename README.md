@@ -28,8 +28,9 @@ Estado al 2 de julio de 2026:
 | Optuna sobre MST-96 | Completa | 40 trials; trial 29 ganador |
 | Entrenamiento final | Completa | MAE global 14.52; MAE a 60 min 15.63 |
 
-El modelo final fue seleccionado exclusivamente con validation y test se evaluó una sola vez al
-terminar. Los resultados finales y su comparación referencial están documentados más abajo.
+El modelo final fue seleccionado exclusivamente con validation; test nunca intervino en la elección
+de arquitectura, hiperparámetros o época. La ejecución auditada reprodujo exactamente el checkpoint,
+las predicciones y las métricas de la primera ejecución final.
 
 ## Visión de alto nivel
 
@@ -342,6 +343,9 @@ no como un óptimo universal.
 
 ![Historia de Optuna](resultados_modular/optuna_plots/optuna_history.png)
 
+Los círculos muestran trials completados y las cruces, trials podados; la línea roja conserva el
+mejor MAE de validation encontrado hasta cada trial completado.
+
 ![Importancia de hiperparámetros](resultados_modular/optuna_plots/optuna_importance.png)
 
 ## Resultados finales
@@ -377,6 +381,30 @@ resultados_modular/forecasting/propuesta_final_eval/
 | 15 min | 13.95 | 22.04 | 9.30 % |
 | 30 min | 14.58 | 23.52 | 9.91 % |
 | 60 min | 15.63 | 25.30 | 11.91 % |
+
+<details>
+<summary>Métricas completas de los 12 horizontes</summary>
+
+| Horizonte | MAE | RMSE | MAPE |
+|---|---:|---:|---:|
+| 5 min | 13.03 | 20.16 | 8.58 % |
+| 10 min | 13.61 | 21.31 | 9.01 % |
+| 15 min | 13.95 | 22.04 | 9.30 % |
+| 20 min | 14.17 | 22.59 | 9.47 % |
+| 25 min | 14.38 | 23.06 | 9.71 % |
+| 30 min | 14.58 | 23.52 | 9.91 % |
+| 35 min | 14.77 | 23.87 | 10.15 % |
+| 40 min | 14.91 | 24.13 | 10.30 % |
+| 45 min | 14.98 | 24.31 | 10.67 % |
+| 50 min | 15.03 | 24.43 | 10.57 % |
+| 55 min | 15.16 | 24.68 | 10.96 % |
+| 60 min | 15.63 | 25.30 | 11.91 % |
+
+</details>
+
+![Curvas de optimización y generalización](resultados_modular/forecasting/propuesta_final_eval/learning_curve.png)
+
+![Métricas por horizonte](resultados_modular/forecasting/propuesta_final_eval/test_metrics_by_horizon.png)
 
 Comando para extraer únicamente el resumen que debe copiarse a la tabla:
 
@@ -419,6 +447,11 @@ simétricas del mismo checkpoint. En los entrenamientos finales nuevos también 
 separa optimización (`train_loss`) y generalización (`train_eval_loss` frente a `valid_loss`). Esta
 medición adicional no se ejecuta en probes ni en Optuna para no encarecer la búsqueda.
 
+En la época elegida, validation supera a train eval solo en 2.08 %. Después de ese punto, train eval
+continúa bajando lentamente mientras validation se estabiliza; al detenerse en la época 32 la brecha
+sigue siendo pequeña (3.29 %). No se observa una divergencia fuerte compatible con sobreajuste
+severo, aunque sí el inicio esperable de una separación entre ambos conjuntos.
+
 El antiguo `prediction_example.png` seleccionaba deliberadamente, dentro del primer ejemplo, el
 sensor con mayor rango real. Era un caso de estrés y no una muestra representativa. La predicción casi
 plana de ese caso muestra una limitación real: el modelo suaviza cambios bruscos y tiende hacia el
@@ -426,12 +459,41 @@ nivel medio. El código actualizado genera por separado un caso de MAE mediano
 (`prediction_example.png`) y el caso de alta variabilidad (`prediction_high_variability.png`). Las
 conclusiones cuantitativas deben basarse en todo test, no en una única trayectoria.
 
+![Pronóstico representativo](resultados_modular/forecasting/propuesta_final_eval/prediction_example.png)
+
+![Caso de alta variabilidad](resultados_modular/forecasting/propuesta_final_eval/prediction_high_variability.png)
+
+Sobre todos los valores válidos de test, la correlación entre objetivo y predicción es `0.9872`. El
+sesgo medio es `+0.59` unidades; la desviación estándar predicha (`144.76`) es ligeramente menor que
+la real (`146.01`), coherente con el suavizado observado en picos y valles.
+
+### Auditoría de integridad de resultados
+
+La fotografía versionada en `resultados_modular/` fue comprobada después de descargarla mediante Git
+LFS:
+
+| Comprobación | Resultado |
+|---|---|
+| Archivos versionados de resultados | 86 archivos; 78 319 718 bytes |
+| JSON de métricas | 33 válidos |
+| Imágenes PNG | 41 válidas |
+| Estudios SQLite Optuna `v1` y `v2` | `PRAGMA integrity_check = ok` |
+| Tensores finales | `(3566, 12, 170)` para objetivos y predicciones |
+| Valores no finitos | Ninguno |
+| Métricas recalculadas desde `test_predictions.npz` | Coinciden con `metrics.json` (diferencia máxima `3.3e-7`) |
+| Primera ejecución vs. ejecución auditada | Checkpoints y predicciones idénticos por SHA-256 |
+| Estado Git LFS | Sin objetos pendientes |
+
+Los 33 JSON corresponden a dos pretrainings, dos probes, 27 trials completados y dos ejecuciones
+finales. Los 13 trials podados permanecen registrados en la base SQLite y en `optuna_trials.csv`,
+pero no generan un `metrics.json` final.
+
 ## Estructura del repositorio
 
 ```text
 .
 ├── README.md                         # Documento principal del proyecto
-├── run_experiment.py                 # CLI: pretrain, compare, probe, tune y train
+├── run_experiment.py                 # CLI: pretrain, compare, probe, tune, train y plots
 ├── requirements-experiment.txt       # Dependencias salvo PyTorch/CUDA
 ├── dataset/
 │   ├── PEMS08/                       # Datos, escala e índices oficiales
@@ -585,6 +647,9 @@ echo $! > logs/final_eval.pid
 | `optuna_history.png` | Evolución del mejor MAE acumulado |
 | `optuna_importance.png` | Importancia fANOVA de hiperparámetros |
 | `propuesta_final_eval/metrics.json` | Train eval, validation final y métricas de test desnormalizadas |
+| `propuesta_final_eval/learning_curve.png` | Optimización online y generalización train/validation |
+| `propuesta_final_eval/test_metrics_by_horizon.png` | MAE, RMSE y MAPE para los 12 horizontes |
+| `propuesta_final_eval/prediction_*.png` | Caso representativo y caso de alta variabilidad |
 | `propuesta_final_eval/test_predictions.npz` | Predicciones y objetivos para análisis posteriores |
 
 Los artefactos están ignorados por defecto para evitar que ejecuciones sucesivas inflen el historial.
