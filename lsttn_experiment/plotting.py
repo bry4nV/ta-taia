@@ -112,7 +112,14 @@ def plot_prediction_example(target, prediction, path):
 def plot_optuna_study(study, output_dir):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    completed = [trial for trial in study.trials if trial.value is not None]
+    completed = [
+        trial for trial in study.trials
+        if trial.value is not None and trial.state.name == "COMPLETE"
+    ]
+    pruned = [
+        trial for trial in study.trials
+        if trial.value is not None and trial.state.name == "PRUNED"
+    ]
     if not completed:
         return
 
@@ -120,7 +127,16 @@ def plot_optuna_study(study, output_dir):
     values = [trial.value for trial in completed]
     running_best = np.minimum.accumulate(values)
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.scatter(numbers, values, alpha=0.7, label="Trial")
+    ax.scatter(numbers, values, alpha=0.7, label="Completado")
+    if pruned:
+        ax.scatter(
+            [trial.number for trial in pruned],
+            [trial.value for trial in pruned],
+            alpha=0.55,
+            marker="x",
+            color="gray",
+            label="Podado",
+        )
     ax.plot(numbers, running_best, color="crimson", label="Mejor acumulado")
     ax.set(title="Optimización de hiperparámetros", xlabel="Trial", ylabel="MAE de validación")
     ax.grid(alpha=0.25)
@@ -133,7 +149,7 @@ def plot_optuna_study(study, output_dir):
         import optuna
 
         importance = optuna.importance.get_param_importances(study)
-    except (ValueError, RuntimeError):
+    except (ImportError, ValueError, RuntimeError):
         importance = {}
     if importance:
         names = list(importance)[::-1]
