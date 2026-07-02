@@ -26,11 +26,10 @@ Estado al 2 de julio de 2026:
 | Pretraining MST-64 y MST-96 | Completa | MST-96 reduce el MAE de reconstrucción en 8.93 % |
 | Probes de forecasting | Completa | MST-96 reduce el MAE de validación en 4.51 % |
 | Optuna sobre MST-96 | Completa | 40 trials; trial 29 ganador |
-| Entrenamiento final | En ejecución / pendiente de importar | Test todavía no documentado aquí |
+| Entrenamiento final | Completa | MAE global 14.52; MAE a 60 min 15.63 |
 
-El README está preparado para incorporar los resultados finales sin modificar el protocolo. La
-sección [Resultados finales](#resultados-finales-pendientes) indica exactamente qué archivos y
-campos actualizar.
+El modelo final fue seleccionado exclusivamente con validation y test se evaluó una sola vez al
+terminar. Los resultados finales y su comparación referencial están documentados más abajo.
 
 ## Visión de alto nivel
 
@@ -345,10 +344,11 @@ no como un óptimo universal.
 
 ![Importancia de hiperparámetros](resultados_modular/optuna_plots/optuna_importance.png)
 
-## Resultados finales (pendientes)
+## Resultados finales
 
-El entrenamiento final se está ejecutando en el servidor. Cuando termine, los artefactos esperados
-estarán en:
+El entrenamiento final usó el checkpoint MST-96 y los hiperparámetros del trial 29. La mejor
+validación ocurrió en la época 22, con MAE normalizado `0.027839`; el early stopping terminó el
+proceso en la época 32. Los artefactos están en:
 
 ```text
 resultados_modular/forecasting/propuesta_final/
@@ -357,17 +357,16 @@ resultados_modular/forecasting/propuesta_final/
 ├── learning_curve.png
 ├── test_metrics_by_horizon.png
 ├── prediction_example.png
+├── prediction_high_variability.png
 └── test_predictions.npz
 ```
 
-Actualizar esta tabla con `metrics.json`:
-
 | Horizonte | MAE | RMSE | MAPE |
 |---|---:|---:|---:|
-| Global (12 horizontes) | Pendiente | Pendiente | Pendiente |
-| 15 min | Pendiente | Pendiente | Pendiente |
-| 30 min | Pendiente | Pendiente | Pendiente |
-| 60 min | Pendiente | Pendiente | Pendiente |
+| Global (12 horizontes) | 14.52 | 23.33 | 10.05 % |
+| 15 min | 13.95 | 22.04 | 9.30 % |
+| 30 min | 14.58 | 23.52 | 9.91 % |
+| 60 min | 15.63 | 25.30 | 11.91 % |
 
 Comando para extraer únicamente el resumen que debe copiarse a la tabla:
 
@@ -385,8 +384,37 @@ Comparación referencial publicada para LSTTN en PEMS08
 | 30 min | 13.71 | 21.89 | 9.09 % |
 | 60 min | 14.54 | 23.47 | 9.77 % |
 
-No se debe completar la comparación usando MAE normalizado de validation. Solo corresponden aquí las
-métricas desnormalizadas de test producidas por el entrenamiento final.
+La variante queda por encima del error publicado en los tres horizontes:
+
+| Horizonte | Diferencia MAE | Diferencia RMSE | Diferencia MAPE |
+|---|---:|---:|---:|
+| 15 min | +5.93 % | +6.07 % | +7.71 % |
+| 30 min | +6.34 % | +7.42 % | +9.02 % |
+| 60 min | +7.52 % | +7.79 % | +21.94 % |
+
+Por tanto, el resultado no supera al LSTTN publicado. La degradación aumenta con el horizonte y es
+especialmente visible en MAPE a 60 minutos. La comparación sigue siendo referencial porque cambian el
+contexto histórico, varios componentes y el protocolo; no debe presentarse como una reproducción
+directa. El MAE global no se compara con la tabla del paper porque allí se reportan horizontes
+específicos.
+
+### Cómo interpretar las curvas y los ejemplos
+
+En las curvas, `train_loss` es un promedio **online**: se acumula mientras los pesos cambian durante
+la época, con dropout y capas en modo entrenamiento. `valid_loss` se calcula después, con los pesos
+finales de la época, dropout desactivado y el modelo en modo evaluación. Por eso validation puede ser
+menor que entrenamiento sin que exista una inconsistencia. Las dos cantidades no son evaluaciones
+simétricas del mismo checkpoint. En los entrenamientos finales nuevos también se registra
+`train_eval_loss`: una segunda pasada sobre train, sin gradientes y en modo `eval()`. La figura final
+separa optimización (`train_loss`) y generalización (`train_eval_loss` frente a `valid_loss`). Esta
+medición adicional no se ejecuta en probes ni en Optuna para no encarecer la búsqueda.
+
+El antiguo `prediction_example.png` seleccionaba deliberadamente, dentro del primer ejemplo, el
+sensor con mayor rango real. Era un caso de estrés y no una muestra representativa. La predicción casi
+plana de ese caso muestra una limitación real: el modelo suaviza cambios bruscos y tiende hacia el
+nivel medio. El código actualizado genera por separado un caso de MAE mediano
+(`prediction_example.png`) y el caso de alta variabilidad (`prediction_high_variability.png`). Las
+conclusiones cuantitativas deben basarse en todo test, no en una única trayectoria.
 
 ## Estructura del repositorio
 
@@ -564,7 +592,7 @@ Checkpoints, predicciones y bases SQLite se gestionan mediante Git LFS según `.
 - MST aprende contexto temporal por sensor; la interacción espacial se incorpora posteriormente.
 - Los 40 trials producen un mejor resultado dentro del espacio definido, no garantizan óptimo global.
 - Varias variables ganadoras están cerca de límites del espacio de búsqueda.
-- Falta incorporar y analizar el test final.
+- El modelo suaviza picos y valles en casos de alta variabilidad; el error crece con el horizonte.
 - Una comparación causal del pretraining requeriría ablaciones: encoder aleatorio, entrenamiento
   end-to-end y fine-tuning del MST.
 - La comparación con el paper no es directa porque esta es una variante con protocolo y arquitectura

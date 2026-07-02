@@ -22,16 +22,39 @@ def plot_training_history(history, path, title, ylabel="Pérdida"):
     epochs = [row["epoch"] for row in history]
     train = [row["train_loss"] for row in history]
     valid = [row["valid_loss"] for row in history]
+    has_train_eval = all("train_eval_loss" in row for row in history)
     best_index = int(np.argmin(valid))
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(epochs, train, label="Entrenamiento", linewidth=1.8)
-    ax.plot(epochs, valid, label="Validación", linewidth=1.8)
-    ax.scatter(epochs[best_index], valid[best_index], color="crimson", zorder=3,
-               label=f"Mejor validación: época {epochs[best_index]}")
-    ax.set(title=title, xlabel="Época", ylabel=ylabel)
-    ax.grid(alpha=0.25)
-    ax.legend()
+    if has_train_eval:
+        train_eval = [row["train_eval_loss"] for row in history]
+        fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+
+        axes[0].plot(epochs, train, label="Entrenamiento online", linewidth=1.8)
+        axes[0].set(title="Optimización", xlabel="Época", ylabel=ylabel)
+        axes[0].grid(alpha=0.25)
+        axes[0].legend()
+
+        axes[1].plot(epochs, train_eval, label="Train (eval)", linewidth=1.8)
+        axes[1].plot(epochs, valid, label="Validación (eval)", linewidth=1.8)
+        axes[1].scatter(
+            epochs[best_index], valid[best_index], color="crimson", zorder=3,
+            label=f"Mejor validación: época {epochs[best_index]}",
+        )
+        axes[1].set(title="Generalización", xlabel="Época", ylabel=ylabel)
+        axes[1].grid(alpha=0.25)
+        axes[1].legend()
+        fig.suptitle(title)
+    else:
+        fig, ax = plt.subplots(figsize=(8, 5))
+        # Train es el promedio online mientras se actualizan los pesos (model.train());
+        # valid se calcula después de la época con pesos fijos (model.eval()).
+        ax.plot(epochs, train, label="Entrenamiento online", linewidth=1.8)
+        ax.plot(epochs, valid, label="Validación (eval)", linewidth=1.8)
+        ax.scatter(epochs[best_index], valid[best_index], color="crimson", zorder=3,
+                   label=f"Mejor validación: época {epochs[best_index]}")
+        ax.set(title=title, xlabel="Época", ylabel=ylabel)
+        ax.grid(alpha=0.25)
+        ax.legend()
     fig.tight_layout()
     fig.savefig(path, dpi=180)
     plt.close(fig)
@@ -89,17 +112,40 @@ def plot_horizon_metrics(metrics, path):
     plt.close(fig)
 
 
-def plot_prediction_example(target, prediction, path):
+def plot_prediction_example(target, prediction, path, selection="representative"):
     if target.size == 0:
         return
     path = _prepare_path(path)
-    # Selección determinista de un sensor con variación visible en el primer pronóstico.
-    sensor = int(np.argmax(np.ptp(target[0], axis=0)))
+    if selection == "high_variability":
+        # Caso de estrés reproducible: sensor más variable del primer pronóstico.
+        sample = 0
+        sensor = int(np.argmax(np.ptp(target[sample], axis=0)))
+        description = "Caso de alta variabilidad"
+    elif selection == "representative":
+        # Serie cuyo MAE se aproxima a la mediana del conjunto de test. Se ignoran
+        # ceros igual que en las métricas enmascaradas del experimento.
+        mask = ~np.isclose(target, 0.0)
+        error_sum = np.where(mask, np.abs(target - prediction), 0.0).sum(axis=1)
+        counts = mask.sum(axis=1)
+        series_mae = np.divide(
+            error_sum,
+            counts,
+            out=np.full_like(error_sum, np.nan, dtype=float),
+            where=counts > 0,
+        )
+        finite = np.isfinite(series_mae)
+        median_mae = float(np.median(series_mae[finite]))
+        distance = np.where(finite, np.abs(series_mae - median_mae), np.inf)
+        sample, sensor = np.unravel_index(np.argmin(distance), distance.shape)
+        description = "Caso representativo (MAE mediano)"
+    else:
+        raise ValueError(f"Selección de ejemplo desconocida: {selection}")
+
     minutes = np.arange(1, target.shape[1] + 1) * 5
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.plot(minutes, target[0, :, sensor], marker="o", label="Real")
-    ax.plot(minutes, prediction[0, :, sensor], marker="o", label="Pronóstico")
-    ax.set(title=f"Ejemplo de pronóstico — sensor {sensor}", xlabel="Horizonte (minutos)",
+    ax.plot(minutes, target[sample, :, sensor], marker="o", label="Real")
+    ax.plot(minutes, prediction[sample, :, sensor], marker="o", label="Pronóstico")
+    ax.set(title=f"{description} — sensor {sensor}", xlabel="Horizonte (minutos)",
            ylabel="Flujo de tráfico")
     ax.set_xticks(minutes)
     ax.grid(alpha=0.25)

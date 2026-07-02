@@ -5,10 +5,14 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
+
 from lsttn_experiment.config import ExperimentConfig
 from lsttn_experiment.plotting import (
     plot_candidate_comparison,
+    plot_horizon_metrics,
     plot_optuna_study,
+    plot_prediction_example,
     plot_training_history,
 )
 from lsttn_experiment.training.common import resolve_device, save_json
@@ -47,6 +51,11 @@ def parse_args():
     train.add_argument("--params", type=Path, required=True)
     train.add_argument("--device", default="cuda:0")
     train.add_argument("--run-name", default="final")
+
+    plots = subparsers.add_parser(
+        "plots", help="Regenera las gráficas de un forecasting sin reentrenar"
+    )
+    plots.add_argument("--run-name", default="propuesta_final")
     return parser.parse_args()
 
 
@@ -148,8 +157,41 @@ def main():
             content = json.load(file)
         parameters = content.get("parameters", content)
         train_forecasting(
-            cfg, args.checkpoint, parameters, resolve_device(args.device), args.run_name
+            cfg,
+            args.checkpoint,
+            parameters,
+            resolve_device(args.device),
+            args.run_name,
+            track_train_eval=True,
         )
+    elif args.command == "plots":
+        run_dir = cfg.output_dir / "forecasting" / args.run_name
+        metrics_path = run_dir / "metrics.json"
+        predictions_path = run_dir / "test_predictions.npz"
+        if not metrics_path.exists() or not predictions_path.exists():
+            raise FileNotFoundError(
+                f"Se requieren {metrics_path} y {predictions_path}"
+            )
+        with metrics_path.open(encoding="utf-8") as file:
+            metrics = json.load(file)
+        arrays = np.load(predictions_path)
+        target = arrays["targets"]
+        prediction = arrays["predictions"]
+        plot_training_history(
+            metrics.get("history", []),
+            run_dir / "learning_curve.png",
+            f"Forecasting {args.run_name}",
+            ylabel="MAE normalizado",
+        )
+        plot_horizon_metrics(metrics["test"], run_dir / "test_metrics_by_horizon.png")
+        plot_prediction_example(target, prediction, run_dir / "prediction_example.png")
+        plot_prediction_example(
+            target,
+            prediction,
+            run_dir / "prediction_high_variability.png",
+            selection="high_variability",
+        )
+        print(f"Gráficas regeneradas en: {run_dir}")
 
 
 if __name__ == "__main__":

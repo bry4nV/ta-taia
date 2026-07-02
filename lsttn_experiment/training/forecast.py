@@ -66,11 +66,18 @@ def make_forecast_loaders(cfg, device, batch_size=None):
     _, datasets, _ = load_splits(cfg.dataset_dir, cfg.short_len, cfg.long_len, cfg.pred_len)
     batch_size = batch_size or cfg.forecast_batch_size
     common = dict(batch_size=batch_size, num_workers=cfg.num_workers, pin_memory=device.type == "cuda")
-    return {
+    loaders = {
         "train": DataLoader(datasets["train"], shuffle=True, **common),
         "valid": DataLoader(datasets["valid"], shuffle=False, **common),
         "test": DataLoader(datasets["test"], shuffle=False, **common),
     }
+    # Loader independiente y sin barajar para medir generalización sobre train.
+    # Su generador evita alterar la secuencia aleatoria del entrenamiento.
+    eval_generator = torch.Generator().manual_seed(cfg.seed + 10_000)
+    loaders["train_eval"] = DataLoader(
+        datasets["train"], shuffle=False, generator=eval_generator, **common
+    )
+    return loaders
 
 
 def train_forecasting(
@@ -82,6 +89,7 @@ def train_forecasting(
     max_epochs=None,
     trial=None,
     evaluate_test: bool = True,
+    track_train_eval: bool = False,
 ):
     set_seed(cfg.seed)
     model = build_forecasting_model(cfg, checkpoint_path, parameters, device)
@@ -104,10 +112,27 @@ def train_forecasting(
         train_loss = _forecast_loss(
             model, loaders["train"], device, scaler.normalized_zero, optimizer, amp_scaler
         )
+        train_eval_loss = (
+            _forecast_loss(model, loaders["train_eval"], device, scaler.normalized_zero)
+            if track_train_eval else None
+        )
         valid_loss = _forecast_loss(model, loaders["valid"], device, scaler.normalized_zero)
         scheduler.step(valid_loss)
-        history.append({"epoch": epoch, "train_loss": train_loss, "valid_loss": valid_loss})
-        print(f"[{run_name}] {epoch:03d} train={train_loss:.6f} val={valid_loss:.6f}")
+        epoch_metrics = {
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "valid_loss": valid_loss,
+        }
+        if train_eval_loss is not None:
+            epoch_metrics["train_eval_loss"] = train_eval_loss
+        history.append(epoch_metrics)
+        train_eval_text = (
+            "" if train_eval_loss is None else f" train_eval={train_eval_loss:.6f}"
+        )
+        print(
+            f"[{run_name}] {epoch:03d} train={train_loss:.6f}"
+            f"{train_eval_text} val={valid_loss:.6f}"
+        )
 
         if trial is not None:
             trial.report(valid_loss, epoch)
@@ -173,4 +198,10 @@ def evaluate_model(model, loader, scaler, device, artifacts_dir=None):
         )
         plot_horizon_metrics(metrics, artifacts_dir / "test_metrics_by_horizon.png")
         plot_prediction_example(target, prediction, artifacts_dir / "prediction_example.png")
+        plot_prediction_example(
+            target,
+            prediction,
+            artifacts_dir / "prediction_high_variability.png",
+            selection="high_variability",
+        )
     return metrics
