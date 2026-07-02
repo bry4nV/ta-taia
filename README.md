@@ -350,8 +350,18 @@ El entrenamiento final usó el checkpoint MST-96 y los hiperparámetros del tria
 validación ocurrió en la época 22, con MAE normalizado `0.027839`; el early stopping terminó el
 proceso en la época 32. Los artefactos están en:
 
+| Medición en la época 22 | MAE normalizado |
+|---|---:|
+| Train online | 0.029716 |
+| Train en modo evaluación | 0.027271 |
+| Validation en modo evaluación | 0.027839 |
+
+La brecha comparable entre train y validation es aproximadamente 2.08 %. La repetición que añadió
+esta auditoría produjo exactamente el mismo MAE global de test (`14.515821`) que la ejecución previa,
+confirmando que la medición adicional no alteró el entrenamiento.
+
 ```text
-resultados_modular/forecasting/propuesta_final/
+resultados_modular/forecasting/propuesta_final_eval/
 ├── best.pt
 ├── metrics.json
 ├── learning_curve.png
@@ -371,7 +381,7 @@ resultados_modular/forecasting/propuesta_final/
 Comando para extraer únicamente el resumen que debe copiarse a la tabla:
 
 ```bash
-python -c "import json; m=json.load(open('resultados_modular/forecasting/propuesta_final/metrics.json')); print('validación:',m['best_valid_loss_normalized']); print(json.dumps(m['test'],indent=2))"
+python -c "import json; m=json.load(open('resultados_modular/forecasting/propuesta_final_eval/metrics.json')); print('validación:',m['best_valid_loss_normalized']); print(json.dumps(m['test'],indent=2))"
 ```
 
 Comparación referencial publicada para LSTTN en PEMS08
@@ -546,7 +556,7 @@ python run_experiment.py tune \
 CUDA_VISIBLE_DEVICES=0 python run_experiment.py train \
   --checkpoint resultados_modular/pretraining/mst_d96/best.pt \
   --params resultados_modular/optuna_best.json \
-  --device cuda:0 --run-name propuesta_final
+  --device cuda:0 --run-name propuesta_final_eval
 ```
 
 Para mantener procesos después de cerrar SSH, anteponer `nohup`, redirigir el log y terminar con `&`:
@@ -555,9 +565,9 @@ Para mantener procesos después de cerrar SSH, anteponer `nohup`, redirigir el l
 CUDA_VISIBLE_DEVICES=0 nohup python run_experiment.py train \
   --checkpoint resultados_modular/pretraining/mst_d96/best.pt \
   --params resultados_modular/optuna_best.json \
-  --device cuda:0 --run-name propuesta_final \
-  > logs/final.log 2>&1 &
-echo $! > logs/final.pid
+  --device cuda:0 --run-name propuesta_final_eval \
+  > logs/final_eval.log 2>&1 &
+echo $! > logs/final_eval.pid
 ```
 
 ## Dónde encontrar y cómo interpretar resultados
@@ -574,8 +584,8 @@ echo $! > logs/final.pid
 | `optuna_best.json` | Configuración seleccionada para el modelo final |
 | `optuna_history.png` | Evolución del mejor MAE acumulado |
 | `optuna_importance.png` | Importancia fANOVA de hiperparámetros |
-| `propuesta_final/metrics.json` | Validation final y métricas de test desnormalizadas |
-| `propuesta_final/test_predictions.npz` | Predicciones y objetivos para análisis posteriores |
+| `propuesta_final_eval/metrics.json` | Train eval, validation final y métricas de test desnormalizadas |
+| `propuesta_final_eval/test_predictions.npz` | Predicciones y objetivos para análisis posteriores |
 
 Los artefactos están ignorados por defecto para evitar que ejecuciones sucesivas inflen el historial.
 Cuando se necesite versionar una fotografía experimental:
