@@ -1,0 +1,14 @@
+{
+  "best_validation_loss": 0.028053968559970433,
+  "parameters": {
+    "long_hidden": 32,
+    "period_hidden": 8,
+    "short_hidden": 128,
+    "fusion_heads": 8,
+    "dropout": 0.05187430755873573,
+    "learning_rate": 0.0016348488574552506,
+    "weight_decay": 2.8629036260125473e-05,
+    "batch_size": 16,
+    "fusion": "attention"
+  }
+}
