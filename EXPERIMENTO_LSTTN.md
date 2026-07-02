@@ -71,11 +71,11 @@ Optuna puede ejecutar dos workers sobre un mismo estudio. Repartir, por ejemplo,
 ```bash
 CUDA_VISIBLE_DEVICES=0 python run_experiment.py tune \
   --checkpoint resultados_modular/pretraining/mst_d64/best.pt \
-  --device cuda:0 --trials 10
+  --device cuda:0 --trials 10 --sampler-seed 42
 
 CUDA_VISIBLE_DEVICES=1 python run_experiment.py tune \
   --checkpoint resultados_modular/pretraining/mst_d64/best.pt \
-  --device cuda:0 --trials 10
+  --device cuda:0 --trials 10 --sampler-seed 43
 ```
 
 Se debe reemplazar `mst_d64` por el candidato ganador.

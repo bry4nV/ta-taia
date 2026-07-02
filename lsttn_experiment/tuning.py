@@ -13,6 +13,7 @@ def tune_forecasting(
     n_trials: int,
     storage: str,
     study_name: str,
+    sampler_seed: int | None = None,
 ):
     def objective(trial):
         d_model = int(__import__("torch").load(checkpoint_path, map_location="cpu")["candidate"]["d_model"])
@@ -44,7 +45,9 @@ def tune_forecasting(
         storage=storage,
         load_if_exists=True,
         direction="minimize",
-        sampler=optuna.samplers.TPESampler(seed=cfg.seed),
+        sampler=optuna.samplers.TPESampler(
+            seed=cfg.seed if sampler_seed is None else sampler_seed
+        ),
         pruner=optuna.pruners.MedianPruner(n_warmup_steps=5),
     )
     study.optimize(objective, n_trials=n_trials)

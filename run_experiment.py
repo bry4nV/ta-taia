@@ -37,6 +37,10 @@ def parse_args():
     tune.add_argument("--trials", type=int, default=20)
     tune.add_argument("--storage", default="sqlite:///resultados_modular/optuna.db")
     tune.add_argument("--study-name", default="lsttn_pems08")
+    tune.add_argument(
+        "--sampler-seed", type=int, default=None,
+        help="Semilla del muestreador Optuna; use una distinta por worker paralelo",
+    )
 
     train = subparsers.add_parser("train", help="Entrena y evalúa la configuración final")
     train.add_argument("--checkpoint", type=Path, required=True)
@@ -124,7 +128,8 @@ def main():
         from lsttn_experiment.tuning import tune_forecasting
 
         study = tune_forecasting(
-            cfg, args.checkpoint, resolve_device(args.device), args.trials, args.storage, args.study_name
+            cfg, args.checkpoint, resolve_device(args.device), args.trials,
+            args.storage, args.study_name, args.sampler_seed,
         )
         parameters = {
             **study.best_params,
